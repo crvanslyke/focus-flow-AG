@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DndContext, useSensor, useSensors, MouseSensor, TouchSensor } from '@dnd-kit/core';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { formatDisplayDate, formatDateKey } from '../../utils/dateUtils';
 
 const DraggableBlock = ({ block, style, children, onResizeStart, onClick }) => {
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -56,10 +57,10 @@ const DraggableBlock = ({ block, style, children, onResizeStart, onClick }) => {
     );
 };
 
-const DroppableCell = ({ dayIndex, hour, children, onMouseDown, onMouseEnter }) => {
+const DroppableCell = ({ dateKey, hour, children, onMouseDown, onMouseEnter }) => {
     const { setNodeRef, isOver } = useDroppable({
-        id: `cell-${dayIndex}-${hour}`,
-        data: { dayIndex, hour }
+        id: `cell-${dateKey}-${hour}`,
+        data: { dateKey, hour }
     });
 
     return (
@@ -115,9 +116,8 @@ const calculateLayout = (blocks) => {
 };
 
 
-const CalendarGrid = ({ blocks, onBlockMove, onRangeSelect, onBlockResize, onBlockClick }) => {
+const CalendarGrid = ({ blocks, visibleDates, onBlockMove, onRangeSelect, onBlockResize, onBlockClick }) => {
     const hours = Array.from({ length: 15 }, (_, i) => i + 6); // 6 AM to 8 PM
-    const days = ['Sun, Dec 28', 'Mon, Dec 29', 'Tue, Dec 30'];
 
     const [isSelecting, setIsSelecting] = useState(false);
     const [selection, setSelection] = useState(null);
@@ -134,9 +134,9 @@ const CalendarGrid = ({ blocks, onBlockMove, onRangeSelect, onBlockResize, onBlo
     const handleDragEnd = (event) => {
         const { active, over } = event;
         if (over && active.id !== over.id) {
-            const { dayIndex, hour } = over.data.current;
+            const { dateKey, hour } = over.data.current;
             if (onBlockMove) {
-                onBlockMove(active.id, dayIndex, hour);
+                onBlockMove(active.id, dateKey, hour);
             }
         }
     };
@@ -186,13 +186,13 @@ const CalendarGrid = ({ blocks, onBlockMove, onRangeSelect, onBlockResize, onBlo
     }, [resizingState, onBlockResize, isSelecting, selection, onRangeSelect]);
 
 
-    const customOnMouseDown = (dayIndex, hour) => {
+    const customOnMouseDown = (dateKey, hour) => {
         setIsSelecting(true);
-        setSelection({ dayIndex, startHour: hour, endHour: hour + 1 });
+        setSelection({ date: dateKey, startHour: hour, endHour: hour + 1 });
     };
-    const customOnMouseEnter = (dayIndex, hour) => {
+    const customOnMouseEnter = (dateKey, hour) => {
         if (isSelecting && selection) {
-            if (dayIndex !== selection.dayIndex) return;
+            if (dateKey !== selection.date) return;
             const newEnd = hour >= selection.startHour ? hour + 1 : selection.startHour + 1;
             setSelection(prev => ({ ...prev, endHour: newEnd }));
         }
@@ -216,12 +216,16 @@ const CalendarGrid = ({ blocks, onBlockMove, onRangeSelect, onBlockResize, onBlo
                 {/* Header */}
                 <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg)' }}>
                     <div style={{ width: '60px', borderRight: '1px solid var(--color-border)' }}></div>
-                    {days.map((day, i) => (
-                        <div key={day} style={{ flex: 1, padding: '12px', textAlign: 'center', fontWeight: '600', fontSize: '0.8rem', color: 'var(--color-text-secondary)', borderRight: '1px solid var(--color-border)', display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                            {day}
-                            {i === 0 && <span style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8', fontSize: '10px', padding: '2px 6px', borderRadius: '4px' }}>TODAY</span>}
-                        </div>
-                    ))}
+                    {visibleDates.map((date) => {
+                        const dateKey = formatDateKey(date);
+                        const isToday = formatDateKey(new Date()) === dateKey;
+                        return (
+                            <div key={dateKey} style={{ flex: 1, padding: '12px', textAlign: 'center', fontWeight: '600', fontSize: '0.8rem', color: 'var(--color-text-secondary)', borderRight: '1px solid var(--color-border)', display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                                {formatDisplayDate(date)}
+                                {isToday && <span style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8', fontSize: '10px', padding: '2px 6px', borderRadius: '4px' }}>TODAY</span>}
+                            </div>
+                        );
+                    })}
                 </div>
 
                 {/* Scrollable Body */}
@@ -236,8 +240,11 @@ const CalendarGrid = ({ blocks, onBlockMove, onRangeSelect, onBlockResize, onBlo
                     </div>
 
                     {/* Day Columns */}
-                    {days.map((day, dayIndex) => {
-                        const dayBlocks = blocks.filter(b => b.dayIndex === dayIndex);
+                    {visibleDates.map((date) => {
+                        const dateKey = formatDateKey(date);
+                        // Filter blocks that match this date key
+                        const dayBlocks = blocks.filter(b => b.date === dateKey);
+
                         const displayBlocks = dayBlocks.map(b => {
                             if (resizingState && resizingState.blockId === b.id) {
                                 return { ...b, duration: resizingState.currentDuration, isResizing: true };
@@ -247,15 +254,15 @@ const CalendarGrid = ({ blocks, onBlockMove, onRangeSelect, onBlockResize, onBlo
                         const layoutBlocks = calculateLayout(displayBlocks);
 
                         return (
-                            <div key={day} style={{ flex: 1, borderRight: '1px solid var(--color-border)', position: 'relative' }}>
+                            <div key={dateKey} style={{ flex: 1, borderRight: '1px solid var(--color-border)', position: 'relative' }}>
                                 {/* Grid Lines */}
                                 {hours.map(h => (
                                     <DroppableCell
                                         key={h}
-                                        dayIndex={dayIndex}
+                                        dateKey={dateKey}
                                         hour={h}
-                                        onMouseDown={() => customOnMouseDown(dayIndex, h)}
-                                        onMouseEnter={() => customOnMouseEnter(dayIndex, h)}
+                                        onMouseDown={() => customOnMouseDown(dateKey, h)}
+                                        onMouseEnter={() => customOnMouseEnter(dateKey, h)}
                                     />
                                 ))}
 
@@ -290,7 +297,7 @@ const CalendarGrid = ({ blocks, onBlockMove, onRangeSelect, onBlockResize, onBlo
                                 ))}
 
                                 {/* Ghost Block */}
-                                {isSelecting && selection && selection.dayIndex === dayIndex && (
+                                {isSelecting && selection && selection.date === dateKey && (
                                     <div style={{
                                         position: 'absolute',
                                         top: (selection.startHour - 6) * 60 + 'px',

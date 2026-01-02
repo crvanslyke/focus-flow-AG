@@ -7,7 +7,10 @@ import NewBlockModal from './components/Modals/NewBlockModal';
 const STORAGE_KEY = 'focusflow_blocks';
 
 // Initial dummy state (fallback if empty)
-const INITIAL_BLOCKS = [
+// Initial dummy state (fallback if empty)
+// We need to generate dynamic dates relative to ONE STABLE POINT (e.g. today or fixed).
+// For the demo, let's just make sure we migrate 'dayIndex' to 'date' strings on load.
+const INITIAL_BLOCKS_RAW = [
   {
     id: 1,
     title: 'CVD paper - planning',
@@ -15,7 +18,7 @@ const INITIAL_BLOCKS = [
     category: 'deep-work',
     startHour: 6,
     duration: 1.25,
-    dayIndex: 0
+    dayIndex: 0 // offset from anchor
   },
   {
     id: 2,
@@ -28,14 +31,39 @@ const INITIAL_BLOCKS = [
   }
 ];
 
+import { getToday, addDays, formatDateKey, getDatesInView } from './utils/dateUtils';
+
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalInitialData, setModalInitialData] = useState(null);
 
+  // Calendar State
+  const [currentDate, setCurrentDate] = useState(getToday());
+  const [viewMode, setViewMode] = useState('3-days'); // 'day', '3-days', 'week'
+
   // Initialize state from localStorage or fallback
   const [blocks, setBlocks] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : INITIAL_BLOCKS;
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Data Migration check: if blocks have dayIndex but NO date, we assume dayIndex 0 is TODAY.
+      const needsMigration = parsed.some(b => !b.date);
+      if (needsMigration) {
+        const todayKey = formatDateKey(new Date()); // Use actual today for migration
+        return parsed.map(b => ({
+          ...b,
+          date: b.date || formatDateKey(addDays(new Date(), b.dayIndex || 0)),
+          // keep dayIndex for now if needed, or just rely on 'date'
+        }));
+      }
+      return parsed;
+    }
+    // Initial Setup: Map dayIndex 0 to Today
+    const today = new Date();
+    return INITIAL_BLOCKS_RAW.map(b => ({
+      ...b,
+      date: formatDateKey(addDays(today, b.dayIndex))
+    }));
   });
 
   // Save to localStorage whenever blocks change
@@ -58,6 +86,26 @@ function App() {
     const endH = startH + duration;
     return `${h12(startH)}:${min(startH)} ${pm(startH)} - ${h12(endH)}:${min(endH)} ${pm(endH)}`;
   };
+
+  // --- Navigation Handlers ---
+  const handlePrev = () => {
+    const daysToSubtract = viewMode === 'week' ? 7 : (viewMode === '3-days' ? 3 : 1);
+    setCurrentDate(prev => addDays(prev, -daysToSubtract));
+  };
+
+  const handleNext = () => {
+    const daysToAdd = viewMode === 'week' ? 7 : (viewMode === '3-days' ? 3 : 1);
+    setCurrentDate(prev => addDays(prev, daysToAdd));
+  };
+
+  const handleToday = () => {
+    setCurrentDate(getToday());
+  };
+
+  const handleViewChange = (mode) => {
+    setViewMode(mode);
+  };
+
 
 
   const handleSaveBlock = (blockData) => {
@@ -82,7 +130,7 @@ function App() {
       // Determine start/duration from initial data or defaults
       let startHour = 9;
       let duration = 1;
-      let dayIndex = 0;
+      let dateKey = formatDateKey(currentDate); // Default to current view start if generic add
 
       // If we have initial data from a drag selection, use it
       if (modalInitialData) {
@@ -91,8 +139,8 @@ function App() {
         if (modalInitialData.endHour) {
           duration = modalInitialData.endHour - modalInitialData.startHour;
         }
-        if (modalInitialData.dayIndex !== undefined) {
-          dayIndex = modalInitialData.dayIndex;
+        if (modalInitialData.date) {
+          dateKey = modalInitialData.date;
         }
       }
 
@@ -103,7 +151,7 @@ function App() {
         category: blockData.category || 'personal',
         startHour,
         duration,
-        dayIndex
+        date: dateKey
       };
 
       setBlocks([...blocks, newBlock]);
@@ -119,12 +167,12 @@ function App() {
     setModalInitialData(null);
   };
 
-  const handleBlockMove = (blockId, newDayIndex, newStartHour) => {
+  const handleBlockMove = (blockId, newDateKey, newStartHour) => {
     setBlocks(prevBlocks => prevBlocks.map(block => {
       if (block.id === blockId) {
         return {
           ...block,
-          dayIndex: newDayIndex,
+          date: newDateKey,
           startHour: newStartHour,
           time: formatTimeRange(newStartHour, block.duration)
         };
@@ -163,15 +211,24 @@ function App() {
     <div style={{ display: 'flex', height: '100vh', width: '100vw', backgroundColor: 'var(--color-bg)' }}>
       <Sidebar />
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <Header onAddBlock={() => {
-          setModalInitialData(null);
-          setIsModalOpen(true);
-        }} />
+        <Header
+          currentDate={currentDate}
+          viewMode={viewMode}
+          onPrev={handlePrev}
+          onNext={handleNext}
+          onToday={handleToday}
+          onViewChange={handleViewChange}
+          onAddBlock={() => {
+            setModalInitialData(null);
+            setIsModalOpen(true);
+          }}
+        />
 
         {/* Content Area */}
         <div style={{ flex: 1, padding: 'var(--spacing-6)', overflow: 'hidden' }}>
           <CalendarGrid
             blocks={blocks}
+            visibleDates={getDatesInView(currentDate, viewMode === 'week' ? 7 : (viewMode === '3-days' ? 3 : 1))}
             onBlockMove={handleBlockMove}
             onRangeSelect={handleRangeSelect}
             onBlockResize={handleBlockResize}
