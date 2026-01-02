@@ -55,7 +55,8 @@ const NewBlockModal = ({ onClose, onSave, onDelete, initialData }) => {
             title: title || 'New Block',
             date,
             category: selectedCategory,
-            // In a real app we'd parse start/end times here
+            startTime,
+            endTime
         });
     };
 

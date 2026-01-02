@@ -87,6 +87,13 @@ function App() {
     return `${h12(startH)}:${min(startH)} ${pm(startH)} - ${h12(endH)}:${min(endH)} ${pm(endH)}`;
   };
 
+  // Helper to parse "HH:MM" string to decimal hour
+  const timeStringToHour = (timeStr) => {
+    if (!timeStr) return null;
+    const [h, m] = timeStr.split(':').map(Number);
+    return h + (m / 60);
+  };
+
   // --- Navigation Handlers ---
   const handlePrev = () => {
     const daysToSubtract = viewMode === 'week' ? 7 : (viewMode === '3-days' ? 3 : 1);
@@ -117,10 +124,19 @@ function App() {
             ...b,
             title: blockData.title,
             category: blockData.category,
-            // We assume time hasn't changed via Modal for this simplified version, 
-            // unless we parse 'date'/'start'/'end' strings.
-            // For now, let only Title/Category be editable via modal to keep it simple,
-            // as time is edited via Drag/Resize.
+            // Update time if provided
+            ...(blockData.startTime && blockData.endTime ? (() => {
+              const s = timeStringToHour(blockData.startTime);
+              const e = timeStringToHour(blockData.endTime);
+              if (s !== null && e !== null && e > s) {
+                return {
+                  startHour: s,
+                  duration: e - s,
+                  time: formatTimeRange(s, e - s)
+                };
+              }
+              return {};
+            })() : {})
           };
         }
         return b;
@@ -233,6 +249,7 @@ function App() {
             onRangeSelect={handleRangeSelect}
             onBlockResize={handleBlockResize}
             onBlockClick={handleBlockClick}
+            onDeleteBlock={handleDeleteBlock}
           />
         </div>
       </main>

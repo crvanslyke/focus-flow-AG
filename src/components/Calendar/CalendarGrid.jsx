@@ -2,13 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { DndContext, useSensor, useSensors, MouseSensor, TouchSensor } from '@dnd-kit/core';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { formatDisplayDate, formatDateKey } from '../../utils/dateUtils';
+import { Trash2 } from 'lucide-react';
 
-const DraggableBlock = ({ block, style, children, onResizeStart, onClick }) => {
+const DraggableBlock = ({ block, style, children, onResizeStart, onClick, onDelete }) => {
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
         id: block.id,
         data: block,
         disabled: block.isResizing
     });
+
+    const [isHovered, setIsHovered] = useState(false);
 
     const finalStyle = {
         ...style,
@@ -30,8 +33,43 @@ const DraggableBlock = ({ block, style, children, onResizeStart, onClick }) => {
                     onClick(block.id);
                 }
             }}
+            onClick={(e) => {
+                // Only trigger click if not pulling a drag operation
+                // dnd-kit usually prevents onClick if a drag occurred, but let's be safe
+                if (!isDragging) {
+                    onClick(block.id);
+                }
+            }}
         >
             {children}
+
+            {/* Quick Delete */}
+            {onDelete && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(block.id);
+                    }}
+                    style={{
+                        position: 'absolute',
+                        top: '4px',
+                        right: '4px',
+                        padding: '4px',
+                        borderRadius: '4px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                        color: '#EF4444',
+                        border: 'none',
+                        cursor: 'pointer',
+                        zIndex: 20,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}
+                >
+                    <Trash2 size={12} />
+                </button>
+            )}
+
             {/* Resize Handle */}
             <div
                 onMouseDown={(e) => {
@@ -116,7 +154,7 @@ const calculateLayout = (blocks) => {
 };
 
 
-const CalendarGrid = ({ blocks, visibleDates, onBlockMove, onRangeSelect, onBlockResize, onBlockClick }) => {
+const CalendarGrid = ({ blocks, visibleDates, onBlockMove, onRangeSelect, onBlockResize, onBlockClick, onDeleteBlock }) => {
     const hours = Array.from({ length: 15 }, (_, i) => i + 6); // 6 AM to 8 PM
 
     const [isSelecting, setIsSelecting] = useState(false);
@@ -273,6 +311,7 @@ const CalendarGrid = ({ blocks, visibleDates, onBlockMove, onRangeSelect, onBloc
                                         block={block}
                                         onResizeStart={handleResizeStart}
                                         onClick={onBlockClick}
+                                        onDelete={onDeleteBlock}
                                         style={{
                                             position: 'absolute',
                                             top: (block.startHour - 6) * 60 + 'px',
