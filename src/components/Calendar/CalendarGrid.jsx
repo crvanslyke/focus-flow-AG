@@ -33,13 +33,7 @@ const DraggableBlock = ({ block, style, children, onResizeStart, onClick, onDele
                     onClick(block.id);
                 }
             }}
-            onClick={(e) => {
-                // Only trigger click if not pulling a drag operation
-                // dnd-kit usually prevents onClick if a drag occurred, but let's be safe
-                if (!isDragging) {
-                    onClick(block.id);
-                }
-            }}
+
         >
             {children}
 
@@ -95,26 +89,45 @@ const DraggableBlock = ({ block, style, children, onResizeStart, onClick, onDele
     );
 };
 
-const DroppableCell = ({ dateKey, hour, children, onMouseDown, onMouseEnter, onMouseMove }) => {
+const QuarterCell = ({ dateKey, hour, quarter }) => {
     const { setNodeRef, isOver } = useDroppable({
-        id: `cell-${dateKey}-${hour}`,
-        data: { dateKey, hour }
+        id: `cell-${dateKey}-${hour}-${quarter}`,
+        data: { dateKey, hour, quarter }
     });
 
     return (
         <div
             ref={setNodeRef}
+            style={{
+                height: '25%', // 15 minutes
+                width: '100%',
+                backgroundColor: isOver ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                borderBottom: quarter < 3 ? '1px dotted rgba(0,0,0,0.05)' : 'none' // subtle guide
+            }}
+        />
+    );
+};
+
+const DroppableCell = ({ dateKey, hour, children, onMouseDown, onMouseEnter, onMouseMove }) => {
+    return (
+        <div
             onMouseDown={onMouseDown}
             onMouseEnter={onMouseEnter}
             onMouseMove={onMouseMove}
             style={{
                 height: '60px',
                 borderBottom: '1px solid var(--color-border)',
-                backgroundColor: isOver ? 'rgba(59, 130, 246, 0.05)' : 'transparent',
+                // backgroundColor: isOver ? 'rgba(59, 130, 246, 0.05)' : 'transparent', // Moved to QuarterCell
                 transition: 'background-color 0.2s',
-                userSelect: 'none'
+                userSelect: 'none',
+                display: 'flex',
+                flexDirection: 'column'
             }}
         >
+            <QuarterCell dateKey={dateKey} hour={hour} quarter={0} />
+            <QuarterCell dateKey={dateKey} hour={hour} quarter={1} />
+            <QuarterCell dateKey={dateKey} hour={hour} quarter={2} />
+            <QuarterCell dateKey={dateKey} hour={hour} quarter={3} />
             {children}
         </div>
     );
@@ -173,9 +186,12 @@ const CalendarGrid = ({ blocks, visibleDates, onBlockMove, onRangeSelect, onBloc
     const handleDragEnd = (event) => {
         const { active, over } = event;
         if (over && active.id !== over.id) {
-            const { dateKey, hour } = over.data.current;
+            // Check if we dropped on a quarter cell
+            const { dateKey, hour, quarter = 0 } = over.data.current;
+            const newStartHour = hour + (quarter * 0.25);
+
             if (onBlockMove) {
-                onBlockMove(active.id, dateKey, hour);
+                onBlockMove(active.id, dateKey, newStartHour);
             }
         }
     };
