@@ -95,7 +95,7 @@ const DraggableBlock = ({ block, style, children, onResizeStart, onClick, onDele
     );
 };
 
-const DroppableCell = ({ dateKey, hour, children, onMouseDown, onMouseEnter }) => {
+const DroppableCell = ({ dateKey, hour, children, onMouseDown, onMouseEnter, onMouseMove }) => {
     const { setNodeRef, isOver } = useDroppable({
         id: `cell-${dateKey}-${hour}`,
         data: { dateKey, hour }
@@ -106,6 +106,7 @@ const DroppableCell = ({ dateKey, hour, children, onMouseDown, onMouseEnter }) =
             ref={setNodeRef}
             onMouseDown={onMouseDown}
             onMouseEnter={onMouseEnter}
+            onMouseMove={onMouseMove}
             style={{
                 height: '60px',
                 borderBottom: '1px solid var(--color-border)',
@@ -224,16 +225,66 @@ const CalendarGrid = ({ blocks, visibleDates, onBlockMove, onRangeSelect, onBloc
     }, [resizingState, onBlockResize, isSelecting, selection, onRangeSelect]);
 
 
-    const customOnMouseDown = (dateKey, hour) => {
+    const customOnMouseDown = (e, dateKey, hour) => {
+        e.preventDefault();
+        const rect = e.currentTarget.getBoundingClientRect();
+        const offsetY = e.clientY - rect.top;
+        const fraction = offsetY / 60;
+        const rounded = Math.floor(fraction * 4) / 4;
+        const start = hour + rounded;
+
         setIsSelecting(true);
-        setSelection({ date: dateKey, startHour: hour, endHour: hour + 1 });
+        setSelection({
+            date: dateKey,
+            startHour: start,
+            endHour: start + 0.25,
+            anchorHour: start
+        });
     };
-    const customOnMouseEnter = (dateKey, hour) => {
-        if (isSelecting && selection) {
-            if (dateKey !== selection.date) return;
-            const newEnd = hour >= selection.startHour ? hour + 1 : selection.startHour + 1;
-            setSelection(prev => ({ ...prev, endHour: newEnd }));
+
+    const customOnMouseMove = (e, dateKey, hour) => {
+        if (!isSelecting || !selection) return;
+        if (dateKey !== selection.date) return;
+
+        const rect = e.currentTarget.getBoundingClientRect();
+        const offsetY = e.clientY - rect.top;
+        const fraction = offsetY / 60;
+
+        // Snap to nearest 0.25
+        const snappedFraction = Math.floor(Math.max(0, Math.min(0.99, fraction)) * 4) / 4;
+        const currentCursorTime = hour + snappedFraction;
+
+        // Use anchor to determine direction
+        if (currentCursorTime >= selection.anchorHour) {
+            // Dragging down or same slot
+            const newEnd = currentCursorTime + 0.25;
+            // Avoid zero duration? (e.g if anchor=8.0, cursor=8.0, end=8.25. Dur=0.25. OK)
+            setSelection(prev => ({
+                ...prev,
+                startHour: prev.anchorHour,
+                endHour: newEnd
+            }));
+        } else {
+            // Dragging up
+            // Start is cursor. End is anchor + 0.25 (assuming anchor slot was included in initial click?
+            // Actually, if I click 8.5. Anchor=8.5. Initial selection 8.5-8.75.
+            // Drag up to 8.0.
+            // Start 8.0. End? 
+            // If I want to include the anchor slot block: End should be 8.75.
+            // If I consider anchor as a POINT...
+            // Standard behavior: Anchor point -> Current point.
+            // But we have slots.
+            // Let's assume Anchor includes the 15min slot it started in.
+            setSelection(prev => ({
+                ...prev,
+                startHour: currentCursorTime,
+                endHour: prev.anchorHour + 0.25
+            }));
         }
+    };
+
+    const customOnMouseEnter = (dateKey, hour) => {
+        // Handled by onMouseMove
     };
 
 
@@ -299,8 +350,9 @@ const CalendarGrid = ({ blocks, visibleDates, onBlockMove, onRangeSelect, onBloc
                                         key={h}
                                         dateKey={dateKey}
                                         hour={h}
-                                        onMouseDown={() => customOnMouseDown(dateKey, h)}
+                                        onMouseDown={(e) => customOnMouseDown(e, dateKey, h)}
                                         onMouseEnter={() => customOnMouseEnter(dateKey, h)}
+                                        onMouseMove={(e) => customOnMouseMove(e, dateKey, h)}
                                     />
                                 ))}
 
